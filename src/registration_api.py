@@ -8,14 +8,7 @@ from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import Producer
 from cryptographic_tool import extract_did_from_private_key
 from fastapi import APIRouter
-
-router = APIRouter()
-
-# FIGURING OUT THE ROUTER POST (this is wrong for now)
-@router.post("/entity")
-async def registration_main(entity_data: dict):
-    result = registration_main(entity_data)  # Call the registration function
-    return result
+from pydantic import BaseModel
 
 
 # Kafka Configuration
@@ -70,8 +63,8 @@ def generate_did_key(output_directory):
     while True:
         # Path to store the private_key.pem
         private_key_path = output_directory
-        result = subprocess.run(["python", "CLItool.py", "--export-private"], capture_output=True, text=True)
-        result = subprocess.run(["python", "CLItool.py", "--export-private", "--private-key-path", private_key_path], capture_output=True, text=True)
+        # Run cryptographic_tool to generate public and private key
+        result = subprocess.run(["python", "cryptographic_tool.py", "--export-private", "--private-key-path", private_key_path], capture_output=True, text=True)
         print(f"Subprocess output:\n{result.stdout}")  # Add this line for debugging
         output = result.stdout.split("\n")
         
@@ -101,7 +94,7 @@ def generate_did_key(output_directory):
             # Return DID:key and private key as a PEM string
             return did_key, private_key.decode("utf-8")  # Decode private key bytes to string
 
-# Function for login before registering
+# Function for login before registering - CHANGE:INTEGRATED WITH WEB APP
 def login_or_register():
     choice = input("Must be registered in the Spatial Web to register a new Entity. Type 'new' to register or 'login' if already registered: ")
     db = connect_db()
@@ -128,6 +121,7 @@ def login_or_register():
         return None
 
 # Function to validate JSON and register entity
+# CHANGE TO INTEGRATE WITH WEB APP - Mainly inputs of function and Credential Part
 def register_entity(json_file_path, output_directory, registered_by=None):
     """Validates, registers, and stores an HSML entity"""
     try:
@@ -226,14 +220,13 @@ def register_entity(json_file_path, output_directory, registered_by=None):
 
 
     # Special case: If entity is a "Credential", more checks needed
+    # CHANGE TO INTEGRATE WITH WEB APP - Cannot have interaction with user, so in web app if credential, will need to ask for private_key of object giving access to
     if entity_type == "Credential":
         issued_by_did = data.get("issuedBy", {}).get("swid") # SWID of user registering Credential
         authorized_for_domain_did = data.get("authorizedForDomain", {}).get("swid") # SWID of Domain that Credential is giving access to
         credential_domain_name = data.get("authorizedForDomain", {}).get("name") # Name of Domain that Credential is giving access to
         access_authorization_did = data.get("accessAuthorization",{}).get("swid") # SWID of new Domain/Person/Organization that Credential is granting access authorization
-        #access_authorization_type = data.get("accessAuthorization",{}).get("@type") # Type of new Domain/Person/Organization that Credential is granting access authorization
-        #access_authorization_name = data.get("accessAuthorization",{}).get("name") # Name of new Domain/Person/Organization that Credential is granting access authorization
-
+        
         if not (issued_by_did and authorized_for_domain_did and access_authorization_did):
             raise ValueError("Missing required 'swid' in Credential fields")
 
@@ -342,13 +335,39 @@ def register_entity(json_file_path, output_directory, registered_by=None):
         "updated_json_path": json_output
     }
 
-# Main function - Need to modify it
-def registration_main():
-    user_did = login_or_register()
+
+# Define a request model for FastAPI input
+# CHANGE TO INTEGRATE WITH WEB APP - can change inputs for new ones
+class RegistrationRequest(BaseModel):
+    json_file_path: str
+    output_directory: str
+    user_did: str = None
+    #hsml_file: UploadFile = File(...),
+    #private_key_file: UploadFile = File(...),
+    #output_directory: str = Form(...),
+    #registered_by: str = Form(None),
+    #credential_domain_private_key_file: UploadFile = File(None)
+
+# Main function - Need to modify it - CHANGE TO INTEGRATE WITH WEB APP
+user_did = login_or_register()
+
+# CHANGE TO INTEGRATE WITH WEB APP - can change inputs for new ones
+def registration_main(user_did, json_file_path, output_directory):
+
+    """
+    Endpoint to register an HSML entity.
     
+    - **hsml_file**: The HSML JSON file.
+    - **private_key_file**: The private key file for the user (for authentication).
+    - **output_directory**: Directory path where updated JSON and generated keys are saved.
+    - **registered_by**: Optional DID of the user registering the entity.
+    - **credential_domain_private_key_file**: Optional file for Credential registrations.
+    """
+
+    # CHANGE TO INTEGRATE WITH WEB APP and TO MAKE HSML API
     if user_did is not None:
-        json_file_path = input("Enter the directory to your HSML JSON to be registered: ")
-        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
+        #json_file_path = input("Enter the directory to your HSML JSON to be registered: ")
+        #output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
 
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
@@ -357,75 +376,42 @@ def registration_main():
         print(result)
     else:
         while True:
-            json_file_path = input("Enter the directory to your Person/Organization HSML JSON to be registered: ")
+            #json_file_path = input("Enter the directory to your Person/Organization HSML JSON to be registered: ")
+
             # Load JSON to check its @type is really Person or Organization
             try:
                 with open(json_file_path, "r") as file:
                     data = json.load(file)
             except json.JSONDecodeError:
-                print("Error: Invalid JSON format.")
-                #exit(1)
-                continue 
+                return{"error": "Invalid JSON format."}
 
             if data.get("@type") not in ["Person", "Organization"]:
-                print("Error: You can only register a Person or Organization as a new user.")
-                # exit(1)
-                continue
+                return{"error": "You can only register a Person or Organization as a new user."}
             break
 
-        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
+        #output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
 
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         
         result = register_entity(json_file_path, output_directory, registered_by=None)
-        print(result)
+        return result
 
-if __name__ == "__main__":
-    registration_main()
+# FastAPI router
+router = APIRouter()
+
+# FastAPI endpoint to register an Entity
+@router.post("/register/")
+async def register_entity_api(request: RegistrationRequest):      
+    # Call the main function with inputs from the request
+    result = registration_main(
+        user_did=request.user_did,    # connection to Web App probably here
+        json_file_path=request.json_file_path,
+        output_directory=request.output_directory
+    )
+    return {"result": result}
 
 
-
-
-## OLD MAIN
-# 
-# if __name__ == "__main__":
-#   user_did = login_or_register()
-#
-#    if user_did is not None:
-#       json_file_path = input("Enter the directory to your HSML JSON to be registered: ")
-#       output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-#
-#        if not os.path.exists(output_directory):
-#            os.makedirs(output_directory)
-#
-#        result = register_entity(json_file_path, output_directory, registered_by=user_did)
-#        print(result)
-#    else:
-#        while True:
-#            json_file_path = input("Enter the directory to your Person/Organization HSML JSON to be registered: ")
-#            # Load JSON to check its @type is really Person or Organization
-#            try:
-#                with open(json_file_path, "r") as file:
-#                    data = json.load(file)
-#            except json.JSONDecodeError:
-#                print("Error: Invalid JSON format.")
-#                #exit(1)
-#               continue 
-#
-#            if data.get("@type") not in ["Person", "Organization"]:
-#                print("Error: You can only register a Person or Organization as a new user.")
-#                # exit(1)
-#                continue
-#            break
-#
-#        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-#
-#        if not os.path.exists(output_directory):
-#            os.makedirs(output_directory)
-#        
-#        result = register_entity(json_file_path, output_directory, registered_by=None)
-#        print(result)
     
 
  
