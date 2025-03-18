@@ -7,16 +7,23 @@ import mysql.connector
 from confluent_kafka.admin import AdminClient, NewTopic
 from confluent_kafka import Producer
 from cryptographic_tool import extract_did_from_private_key
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
+
+# No Interactive Prompts:
+# All input is now passed via HTTP request parameters and file uploads.
+
+# File Uploads:
+# The HSML JSON, user private key, and (if needed) credential domain private key are all received as file uploads.
+
+# Form Fields:
+# The output directory and optionally the registered_by DID are provided as form data.
+
+# Endpoint Separation:
+# The /entity endpoint now directly calls the business logic in register_entity rather than invoking interactive functions.
+
 
 router = APIRouter()
-
-# FIGURING OUT THE ROUTER POST (this is wrong for now)
-@router.post("/entity")
-async def registration_main(entity_data: dict):
-    result = registration_main(entity_data)  # Call the registration function
-    return result
-
 
 # Kafka Configuration
 KAFKA_CONFIG = {
@@ -33,16 +40,13 @@ db_config = {
     "database": "did_registry"
 }
 
-# Connect to MySQL
 def connect_db():
     return mysql.connector.connect(**db_config)
 
-# Function to create a Kafka topic for Agents
 def create_kafka_topic(topic_name, num_partitions=1, replication_factor=1):
-    """Creates a Kafka topic using Confluent Kafka AdminClient"""
+    """Creates a Kafka topic using Confluent Kafka AdminClient."""
     topic_list = [NewTopic(topic_name, num_partitions=num_partitions, replication_factor=replication_factor)]
     fs = admin_client.create_topics(topic_list)
-    
     for topic, f in fs.items():
         try:
             f.result()  # Block until topic creation is done
@@ -50,13 +54,11 @@ def create_kafka_topic(topic_name, num_partitions=1, replication_factor=1):
         except Exception as e:
             print(f"Failed to create topic '{topic}': {e}")
 
-# Generate random string for Kafka Topic name (NEW - Niki)
 def generate_random_string(length=6):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
-# Function to send a Kafka message
 def send_kafka_message(topic, message):
-    """Sends a message to a Kafka topic"""
+    """Sends a message to a Kafka topic."""
     try:
         producer.produce(topic, json.dumps(message))
         producer.flush()
@@ -64,276 +66,194 @@ def send_kafka_message(topic, message):
     except Exception as e:
         print(f"Failed to send message to Kafka topic '{topic}': {e}")
 
-# Function to generate DID:key using CLI tool (modified)
 def generate_did_key(output_directory):
-    """Runs the CLI tool to generate a unique DID:key and extract the private key"""
+    """
+    Runs the CLI tool to generate a unique DID:key and extract the private key.
+    The tool is expected to output a line like:
+    "Generated DID:key: did:key:xyz..."
+    """
     while True:
         # Path to store the private_key.pem
-        private_key_path = output_directory
-        result = subprocess.run(["python", "CLItool.py", "--export-private"], capture_output=True, text=True)
-        result = subprocess.run(["python", "CLItool.py", "--export-private", "--private-key-path", private_key_path], capture_output=True, text=True)
-        print(f"Subprocess output:\n{result.stdout}")  # Add this line for debugging
-        output = result.stdout.split("\n")
-        
-        # Extract DID:key from the stdout (terminal output)
-        did_key = None
+        private_key_path = os.path.join(output_directory, "private_key.pem")
+        # Run CLI tool to generate a private key file
+        result = subprocess.run(
+            ["python", "CLItool.py", "--export-private", "--private-key-path", private_key_path],
+            capture_output=True, text=True
+        )
+        print(f"Subprocess output:\n{result.stdout}")
         output = result.stdout.splitlines()
-        
+        did_key = None
         for line in output:
             if line.startswith("Generated DID:key:"):
                 did_key = line.split("Generated DID:key:")[1].strip()
-        
         if not did_key:
             raise ValueError("Failed to generate DID:key from output")
-
-        # Now, read the private key from the saved file "private_key.pem"
+        
+        # Read the generated private key file
         try:
             with open(private_key_path, "rb") as key_file:
-                private_key = key_file.read()  # Read the private key as bytes
+                private_key = key_file.read()
         except FileNotFoundError:
             raise ValueError(f"Private key file '{private_key_path}' not found")
         
-        # Check if the generated swid already exists in the database
+        # Ensure the new DID is unique in the database
         db = connect_db()
         cursor = db.cursor()
         cursor.execute("SELECT COUNT(*) FROM did_keys WHERE did = %s", (did_key,))
-        if cursor.fetchone()[0] == 0:  # SWID is unique
-            # Return DID:key and private key as a PEM string
-            return did_key, private_key.decode("utf-8")  # Decode private key bytes to string
+        if cursor.fetchone()[0] == 0:
+            return did_key, private_key.decode("utf-8")
 
-# Function for login before registering
-def login_or_register():
-    choice = input("Must be registered in the Spatial Web to register a new Entity. Type 'new' to register or 'login' if already registered: ")
-    db = connect_db()
-    cursor = db.cursor()
-    if choice.lower() == "new":
-        print("Registering a new user. You can only register a Person or Organization.")
-        return None
-    elif choice.lower() == "login":
-        private_key_path = input("Provide your private_key.pem path: ")
-        user_did = extract_did_from_private_key(private_key_path)
-        cursor.execute("SELECT metadata FROM did_keys WHERE did = %s", (user_did,))
-        result = cursor.fetchone()
-        if not result:
-            print("DID not found in database. Please register first.")
-            return None
-        user_data = json.loads(result[0])
-        if user_data.get("@type") not in ["Person", "Organization"]:
-            print("Only registered Persons or Organizations can register new entities.")
-            return None
-        print(f"Welcome {user_data.get('name')}, you can now register your new Entity.")
-        return user_did
-    else:
-        print("Invalid choice.")
-        return None
-
-# Function to validate JSON and register entity
-def register_entity(json_file_path, output_directory, registered_by=None):
-    """Validates, registers, and stores an HSML entity"""
-    try:
-        with open(json_file_path, "r") as file:
-            data = json.load(file)
-    except json.JSONDecodeError:
-        return {"status": "error", "message": "Invalid JSON format"}
-    
-    # Check if JSON file is actually JSON
-    if not isinstance(data, dict):
-        return {"status": "error", "message": "Uploaded file is not a valid JSON object"}
-
-    # Check @context for HSML
+def register_entity(data: dict, output_directory: str, registered_by: str = None, 
+                    credential_domain_private_key_content: str = None):
+    """
+    Validates, registers, and stores an HSML entity using the provided JSON data.
+    Note: For Credential registrations, an additional private key file for the domain
+    must be provided via credential_domain_private_key_content.
+    """
+    # Validate that the HSML JSON uses the expected context
     if "@context" not in data or "https://digital-twin-interoperability.github.io/hsml-schema-context/hsml.jsonld" not in data["@context"]:
         return {"status": "error", "message": "Not a valid HSML JSON"}
-
+    
     print("HSML JSON accepted.")
-
-    # Check for required fields based on type
+    
     entity_type = data.get("@type")
     required_fields = {
         "Entity": ["name", "description"],
         "Person": ["name", "birthDate", "email"],
         "Agent": ["name", "creator", "dateCreated", "dateModified", "description"],
         "Credential": ["name", "description", "issuedBy", "accessAuthorization", "authorizedForDomain"],
-        "Organization": ["name", "description", "url","address", "foundingDate", "email"]
+        "Organization": ["name", "description", "url", "address", "foundingDate", "email"]
     }
-    
     if entity_type not in required_fields:
         return {"status": "error", "message": "Unknown or missing entity type"}
-
+    
     missing_fields = [field for field in required_fields[entity_type] if field not in data]
     if missing_fields:
         return {"status": "error", "message": f"Missing required fields: {missing_fields}"}
-
-    # Check additional conditions per type
+    
     if entity_type == "Person" and "affiliation" not in data:
         print("Warning: 'affiliation' field is missing.")
     
     if entity_type == "Credential" and ("validFrom" not in data or "validUntil" not in data):
         print("Warning: Credential has no expiration date.")
-
+    
     if entity_type == "Entity" and "linkedTo" not in data:
         print("Warning: Object not linked to any other Entity. It will be registered under this user’s SWID.")
-
-    # Check if SWID exists in the JSON
-    swid = data.get("swid")
     
-    if swid:
-        # Check if this swid is already registered
-        db = connect_db()
-        cursor = db.cursor()
-        cursor.execute("SELECT COUNT(*) FROM did_keys WHERE did = %s", (swid,))
-        existing = cursor.fetchone()[0]
-
-        if existing:
-            print(f"Warning: The provided 'swid' ({swid}) already exists in the database. You should not register an already existing object.")
-            user_input = input("Do you want to continue and overwrite the existing 'swid' property? (yes/no): ").strip().lower()
-
-            if user_input != "yes":
-                print("Process aborted. No changes were made.")
-                exit()
-        
-        print(f"Warning: SWID '{swid}' in JSON file will be overwritten.")
-
-    # No SWID in JSON, generate a unique one. Generate a new DID:key and private key
-    did_key, private_key = generate_did_key(output_directory)
-    data["swid"] = did_key # Attach new DID:key to swid
-    print(f"Generated unique SWID: {did_key}")
-    public_key_part = did_key.replace("did:key:", "") # Only leaves the public key part
-        
-    # Connect to DB
+    # If a swid exists in the provided JSON, warn that it will be overwritten.
+    swid = data.get("swid")
     db = connect_db()
     cursor = db.cursor()
-
-    # If what is being registered is a Person/Organization for the first time (when no existing user_did)
+    if swid:
+        cursor.execute("SELECT COUNT(*) FROM did_keys WHERE did = %s", (swid,))
+        if cursor.fetchone()[0] > 0:
+            print(f"Warning: The provided 'swid' ({swid}) already exists and will be overwritten.")
+    
+    # Generate a new DID:key and associated private key using the CLI tool
+    did_key, generated_private_key = generate_did_key(output_directory)
+    data["swid"] = did_key
+    print(f"Generated unique SWID: {did_key}")
+    public_key_part = did_key.replace("did:key:", "")
+    
+    # If no registered_by is provided, assume this is a new registration.
     if registered_by is None:
         registered_by = did_key
-
+    
     topic_name = None
-
-    # Special case: If entity is an "Agent", create a Kafka topic
+    # If the entity is an Agent, create a Kafka topic for it.
     if entity_type == "Agent":
         flagUniqueName = False
-        while flagUniqueName == False:
-            random_suffix = generate_random_string() # new
-            topic_name = f"{data["name"].replace(" ", "_").lower()}_{random_suffix}" # new
-            #topic_name = data["name"].replace(" ", "_").lower()
-            # Check the name generated does not already exist
+        while not flagUniqueName:
+            random_suffix = generate_random_string()
+            topic_name = f"{data['name'].replace(' ', '_').lower()}_{random_suffix}"
             cursor.execute("SELECT COUNT(*) FROM did_keys WHERE kafka_topic = %s", (topic_name,))
-            existing_topic = cursor.fetchone()
-            if existing_topic[0]==0:
+            if cursor.fetchone()[0] == 0:
                 flagUniqueName = True
                 create_kafka_topic(topic_name)
                 send_kafka_message(topic_name, {"message": f"New Agent registered: {data['name']}"})
-
-
-    # Special case: If entity is a "Credential", more checks needed
+    
+    # If the entity is a Credential, perform additional checks.
     if entity_type == "Credential":
-        issued_by_did = data.get("issuedBy", {}).get("swid") # SWID of user registering Credential
-        authorized_for_domain_did = data.get("authorizedForDomain", {}).get("swid") # SWID of Domain that Credential is giving access to
-        credential_domain_name = data.get("authorizedForDomain", {}).get("name") # Name of Domain that Credential is giving access to
-        access_authorization_did = data.get("accessAuthorization",{}).get("swid") # SWID of new Domain/Person/Organization that Credential is granting access authorization
-        #access_authorization_type = data.get("accessAuthorization",{}).get("@type") # Type of new Domain/Person/Organization that Credential is granting access authorization
-        #access_authorization_name = data.get("accessAuthorization",{}).get("name") # Name of new Domain/Person/Organization that Credential is granting access authorization
-
+        issued_by_did = data.get("issuedBy", {}).get("swid")
+        authorized_for_domain_did = data.get("authorizedForDomain", {}).get("swid")
+        credential_domain_name = data.get("authorizedForDomain", {}).get("name")
+        access_authorization_did = data.get("accessAuthorization", {}).get("swid")
         if not (issued_by_did and authorized_for_domain_did and access_authorization_did):
-            raise ValueError("Missing required 'swid' in Credential fields")
-
-        # Ensure issuedBy matches the logged in User's swid registering the Credential
+            return {"status": "error", "message": "Missing required 'swid' in Credential fields"}
         if issued_by_did != registered_by:
-            raise ValueError("issuedBy field must match the User registering the Credential")
-
-        # Verify authorizedForDomain ownership 
-        private_key_path_credential_domain = input(f"Provide your private_key.pem path for '{credential_domain_name}' this Credential is giving access to: ")
-        credential_domain_did = extract_did_from_private_key(private_key_path_credential_domain)
+            return {"status": "error", "message": "issuedBy field must match the user registering the Credential"}
         
+        if credential_domain_private_key_content is None:
+            return {"status": "error", "message": f"Credential registration requires private key for '{credential_domain_name}'"}
+        
+        # Write the provided credential domain private key to a temporary file for DID extraction.
+        temp_key_path = os.path.join(output_directory, f"{credential_domain_name.replace(' ', '_')}_private_key.pem")
+        with open(temp_key_path, "w") as f:
+            f.write(credential_domain_private_key_content)
+        credential_domain_did = extract_did_from_private_key(temp_key_path)
         if credential_domain_did != authorized_for_domain_did:
-            print(f"Invalid private_key.pem for '{credential_domain_name}'")
-            return None
+            return {"status": "error", "message": f"Invalid private key for '{credential_domain_name}'"}
         
         cursor.execute("SELECT metadata FROM did_keys WHERE did = %s", (authorized_for_domain_did,))
         domain_did_result = cursor.fetchone()
         if not domain_did_result:
-            print(f"DID not found in database. Please register '{credential_domain_name}' first.")
-            return None
-
-        # Update authorizedForDomain's metadata to include the new accessAuthorization swid in "canAccess"
+            return {"status": "error", "message": f"DID not found in database. Please register '{credential_domain_name}' first."}
+        
         domain_data = json.loads(domain_did_result[0])
         new_access_auth = data.get("accessAuthorization", {})
         if "canAccess" not in domain_data:
-            # Write canAccess property
             domain_data["canAccess"] = [new_access_auth]
-            
         else:
-            # Attach to the existing canAccess property and existing allowed_did (fetch and merge)
             existing_can_access = domain_data.get("canAccess", [])
-            
-            # Ensure it's a list (sometimes it could be a single dict mistakenly)
             if not isinstance(existing_can_access, list):
                 existing_can_access = [existing_can_access]
-            
-            # Extract existing swids to prevent duplicates
             existing_swids = {entry["swid"] for entry in existing_can_access if "swid" in entry}
-
             if new_access_auth.get("swid") and new_access_auth["swid"] not in existing_swids:
                 existing_can_access.append(new_access_auth)
             else:
-                print(f"{new_access_auth["swid"]} arlready has access to '{credential_domain_name}'")
-            
-            # Update the JSON structure with the merged list
+                print(f"{new_access_auth['swid']} already has access to '{credential_domain_name}'")
             domain_data["canAccess"] = existing_can_access
         
-        # Update Domain metadata JSON in DB and save in location
-            cursor.execute("UPDATE did_keys SET metadata = %s WHERE did = %s", (json.dumps(domain_data), authorized_for_domain_did))
-            domain_json_output = os.path.join(output_directory, f"{domain_data['name'].replace(' ', '_')}.json")
-            with open(domain_json_output, "w") as json_file:
-                json.dump(data, json_file, indent=4)
-            print(f"Updated {credential_domain_name} JSON saved to: {domain_json_output}")
-            
-        # Now to dump into allowed_did
-        # Fetch the existing allowed_did list from the database
+        cursor.execute("UPDATE did_keys SET metadata = %s WHERE did = %s", (json.dumps(domain_data), authorized_for_domain_did))
+        domain_json_output = os.path.join(output_directory, f"{domain_data['name'].replace(' ', '_')}.json")
+        with open(domain_json_output, "w") as json_file:
+            json.dump(data, json_file, indent=4)
+        print(f"Updated {credential_domain_name} JSON saved to: {domain_json_output}")
+        
         cursor.execute("SELECT allowed_did FROM did_keys WHERE did = %s", (authorized_for_domain_did,))
         allowed_did_result = cursor.fetchone()
-
-        # Convert the existing allowed_did value into a list (splitting by comma)
         if allowed_did_result and allowed_did_result[0]:
-            allowed_did_list = allowed_did_result[0].split(",")  # Stored as comma-separated values
+            allowed_did_list = allowed_did_result[0].split(",")
         else:
-            allowed_did_list = []  # Initialize as empty list if nothing exists
-
-        # Add the new DID if it's not already present
+            allowed_did_list = []
         new_did = new_access_auth.get("swid")
         if new_did and new_did not in allowed_did_list:
             allowed_did_list.append(new_did)
-
-        # Convert the list back into a comma-separated string for database storage
         allowed_did_string = ",".join(allowed_did_list)
-
-        # Update the database with the modified allowed_did list
         cursor.execute("UPDATE did_keys SET allowed_did = %s WHERE did = %s", 
-                    (allowed_did_string, authorized_for_domain_did))
-
-    # Store in MySQL
+                       (allowed_did_string, authorized_for_domain_did))
+    
+    # Store the entity information in the database.
     cursor.execute(
         "REPLACE INTO did_keys (did, public_key, metadata, registered_by, kafka_topic) VALUES (%s, %s, %s, %s, %s)",
         (did_key, public_key_part, json.dumps(data), registered_by, topic_name)
     )
     db.commit()
     db.close()
-
-    # Ask user where to save files
+    
+    # Save the generated private key and the updated JSON to the output directory.
     private_key_output = os.path.join(output_directory, "private_key.pem")
     json_output = os.path.join(output_directory, f"{data['name'].replace(' ', '_')}.json")
-
-    # Save private key file (there was an error here, had to modify to this)
+    
     with open(private_key_output, "w") as private_key_file:
-        private_key_file.write(private_key)
-
-    # Save JSON file
+        private_key_file.write(generated_private_key)
+    
     with open(json_output, "w") as json_file:
         json.dump(data, json_file, indent=4)
-
+    
     print(f"Private key saved to: {private_key_output}")
     print(f"Updated JSON saved to: {json_output}")
-
+    
     return {
         "status": "success",
         "message": "Entity registered successfully",
@@ -342,90 +262,43 @@ def register_entity(json_file_path, output_directory, registered_by=None):
         "updated_json_path": json_output
     }
 
-# Main function - Need to modify it
-def registration_main():
-    user_did = login_or_register()
+@router.post("/entity")
+async def register_entity_api(
+    hsml_file: UploadFile = File(...),
+    private_key_file: UploadFile = File(...),
+    output_directory: str = Form(...),
+    registered_by: str = Form(None),
+    credential_domain_private_key_file: UploadFile = File(None)
+):
+    """
+    Endpoint to register an HSML entity.
     
-    if user_did is not None:
-        json_file_path = input("Enter the directory to your HSML JSON to be registered: ")
-        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-
-        result = register_entity(json_file_path, output_directory, registered_by=user_did)
-        print(result)
-    else:
-        while True:
-            json_file_path = input("Enter the directory to your Person/Organization HSML JSON to be registered: ")
-            # Load JSON to check its @type is really Person or Organization
-            try:
-                with open(json_file_path, "r") as file:
-                    data = json.load(file)
-            except json.JSONDecodeError:
-                print("Error: Invalid JSON format.")
-                #exit(1)
-                continue 
-
-            if data.get("@type") not in ["Person", "Organization"]:
-                print("Error: You can only register a Person or Organization as a new user.")
-                # exit(1)
-                continue
-            break
-
-        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-        
-        result = register_entity(json_file_path, output_directory, registered_by=None)
-        print(result)
+    - **hsml_file**: The HSML JSON file.
+    - **private_key_file**: The private key file for the user (for authentication).
+    - **output_directory**: Directory path where updated JSON and generated keys are saved.
+    - **registered_by**: Optional DID of the user registering the entity.
+    - **credential_domain_private_key_file**: Optional file for Credential registrations.
+    """
+    try:
+        hsml_content = await hsml_file.read()
+        data = json.loads(hsml_content)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid HSML JSON format")
+    
+    # Read the user private key content (assumed to be used for authentication elsewhere)
+    private_key_content = (await private_key_file.read()).decode("utf-8")
+    
+    credential_domain_private_key_content = None
+    if credential_domain_private_key_file is not None:
+        credential_domain_private_key_content = (await credential_domain_private_key_file.read()).decode("utf-8")
+    
+    try:
+        result = register_entity(data, output_directory, registered_by, credential_domain_private_key_content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    return result
 
 if __name__ == "__main__":
-    registration_main()
-
-
-
-
-## OLD MAIN
-# 
-# if __name__ == "__main__":
-#   user_did = login_or_register()
-#
-#    if user_did is not None:
-#       json_file_path = input("Enter the directory to your HSML JSON to be registered: ")
-#       output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-#
-#        if not os.path.exists(output_directory):
-#            os.makedirs(output_directory)
-#
-#        result = register_entity(json_file_path, output_directory, registered_by=user_did)
-#        print(result)
-#    else:
-#        while True:
-#            json_file_path = input("Enter the directory to your Person/Organization HSML JSON to be registered: ")
-#            # Load JSON to check its @type is really Person or Organization
-#            try:
-#                with open(json_file_path, "r") as file:
-#                    data = json.load(file)
-#            except json.JSONDecodeError:
-#                print("Error: Invalid JSON format.")
-#                #exit(1)
-#               continue 
-#
-#            if data.get("@type") not in ["Person", "Organization"]:
-#                print("Error: You can only register a Person or Organization as a new user.")
-#                # exit(1)
-#                continue
-#            break
-#
-#        output_directory = input("Enter the directory to save the private key and updated HSML JSON file: ")
-#
-#        if not os.path.exists(output_directory):
-#            os.makedirs(output_directory)
-#        
-#        result = register_entity(json_file_path, output_directory, registered_by=None)
-#        print(result)
-    
-
- 
+    import uvicorn
+    uvicorn.run("your_module_name:router", host="0.0.0.0", port=8000, reload=True)
