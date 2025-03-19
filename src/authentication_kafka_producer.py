@@ -48,7 +48,7 @@ def authenticate(private_key_path: str, topic: str) -> bool:
         print(f"Authentication failed: {producer_did} is NOT authorized for topic {topic}.")
         return False
 
-def send_data(topic: str):
+def send_data(topic: str, json_message:dict):
     producer = producers.get(topic)
     if not producer:
         print(f"No producer found for topic: {topic}")
@@ -57,10 +57,10 @@ def send_data(topic: str):
     print(f"Producer started for topic: {topic}")
 
     while topic in authenticated_users:
-        message = json.dumps({"data": "Simulation update"})
+        message = json.dumps(json_message)  # Send the actual JSON file contents
         producer.produce(topic, message.encode('utf-8'), callback=delivery_report)
         producer.flush()
-        time.sleep(0.02)  # 20 ms delay for continuous sending
+        time.sleep(0.05)  # 50 ms delay for continuous sending
 
         if keyboard.is_pressed('q'):
             print(f"Stopping producer for topic: {topic}")
@@ -77,15 +77,15 @@ def api_authenticate(private_key_path: str, topic: str):
     else:
         raise HTTPException(status_code=403, detail="Authentication failed.")
 
-@router.post("/start")
-def start_producer(topic: str):
+@router.post("/start") # For Continuous Streaming
+def start_producer(topic: str, json_message: dict):
     if topic not in authenticated_users: # Check if user has authenticated
         raise HTTPException(status_code=401, detail="User not authenticated for this topic.")
 
     if topic in producer_threads:  # Prevent starting multiple producers
         return {"message": f"Producer for topic {topic} is already running."}
 
-    thread = threading.Thread(target=send_data, args=(topic,), daemon=True)
+    thread = threading.Thread(target=send_data, args=(topic, json_message), daemon=True)
     producer_threads[topic] = thread
     thread.start()
 
@@ -99,7 +99,7 @@ def stop_producer(topic: str):
     else:
         return {"message": f"No active producer found for topic {topic}."}
     
-@router.post("/send-message")
+@router.post("/send-message") # For Manual Messages - for more control of what is sent and when
 def send_message(topic: str, message: dict):
     """Sends a user-provided JSON message to Kafka after authentication."""
     if topic not in authenticated_users:
