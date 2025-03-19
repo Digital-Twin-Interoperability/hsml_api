@@ -349,7 +349,7 @@ class RegistrationRequest(BaseModel):
     #credential_domain_private_key_file: UploadFile = File(None)
 
 # Main function - Need to modify it - CHANGE TO INTEGRATE WITH WEB APP
-user_did = login_or_register()
+#user_did = login_or_register()
 
 # CHANGE TO INTEGRATE WITH WEB APP - can change inputs for new ones
 def registration_main(user_did, json_file_path, output_directory):
