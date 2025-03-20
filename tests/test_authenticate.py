@@ -2,7 +2,7 @@ import requests
 import json
 
 # API endpoints
-API_URL = "http://127.0.0.1:8000/verification"
+API_URL = "http://127.0.0.1:8000/producer"
 
 # Request data
 private_key_path = "C:/Users/abarrio/OneDrive - JPL/Desktop/Digital Twin Interoperability/Codes/HSML Examples/registeredExamples/private_key_example_agent_4.pem"
@@ -34,6 +34,6 @@ print(send_response.json())  # Should print "Message sent successfully"
 input("Press Enter to stop the producer...")
 
 # Stop Producer
-stop_response = requests.post(f"{API_URL}/stop", json={"topic": topic})
+stop_response = requests.post(f"{API_URL}/stop", params={"topic": topic})
 print(stop_response.json())
 
