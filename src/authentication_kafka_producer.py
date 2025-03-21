@@ -1,21 +1,21 @@
-import json
-import time
-import threading
+import json, time, os, threading, keyboard
 from fastapi import APIRouter, HTTPException
 from confluent_kafka import Producer
-import keyboard
 from cryptographic_tool import extract_did_from_private_key
 import mysql.connector
+from dotenv import load_dotenv
+
+load_dotenv()  # This will load the .env file from the current directory
 
 # Configuration for Kafka broker
 KAFKA_CONFIG = {'bootstrap.servers': 'localhost:9092'}
 
 # MySQL Database Configuration
 db_config = {
-    "host": "localhost",
-    "user": "root",
-    "password": "MoonwalkerJPL85!",
-    "database": "did_registry"
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),  # Ensure this is set in environment
+    "database": os.getenv("DB_NAME", "did_registry")
 }
 
 router = APIRouter()
