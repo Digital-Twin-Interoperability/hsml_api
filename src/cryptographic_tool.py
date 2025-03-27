@@ -28,6 +28,23 @@ def extract_did_from_private_key(private_key_path):
     
     return did_key
 
+def extract_did_from_private_key_bytes(private_key_bytes: bytes) -> str:
+    private_key = serialization.load_pem_private_key(private_key_bytes, password=None)
+
+    if not isinstance(private_key, Ed25519PrivateKey):
+        raise ValueError("Invalid key type. Expected Ed25519.")
+
+    public_key = private_key.public_key()
+    public_key_bytes = public_key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
+
+    multicodec_prefix = b'\xed\x01'  # 0xED01 prefix for Ed25519
+    multicodec_key = multicodec_prefix + public_key_bytes
+    did_key = "did:key:" + base58.b58encode(multicodec_key).decode('utf-8')
+    return did_key
+
 def generate_did_key():
     # Generate Ed25519 key pair
     private_key = Ed25519PrivateKey.generate()

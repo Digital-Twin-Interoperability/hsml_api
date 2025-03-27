@@ -1,7 +1,7 @@
 import json, time, os, threading, keyboard
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from confluent_kafka import Producer
-from cryptographic_tool import extract_did_from_private_key
+from cryptographic_tool import extract_did_from_private_key, extract_did_from_private_key_bytes
 import mysql.connector
 from dotenv import load_dotenv
 
@@ -48,6 +48,28 @@ def authenticate(private_key_path: str, topic: str) -> bool:
         print(f"Authentication failed: {producer_did} is NOT authorized for topic {topic}.")
         return False
 
+# Using this one:  
+def authenticate_keyfile(private_key_bytes: bytes, topic: str) -> bool:
+    try:
+        producer_did = extract_did_from_private_key_bytes(private_key_bytes)
+    except Exception as e:
+        print(f"Failed to extract DID: {e}")
+        return False
+
+    db = mysql.connector.connect(**db_config)
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("SELECT did FROM did_keys WHERE did = %s AND kafka_topic = %s", (producer_did, topic))
+    result = cursor.fetchone()
+    db.close()
+
+    if result:
+        print(f"Authentication successful: {producer_did} is authorized for topic {topic}.")
+        authenticated_users[topic] = producer_did
+        return True
+    else:
+        print(f"Authentication failed: {producer_did} is NOT authorized for topic {topic}.")
+        return False
+
 def send_data(topic: str, json_message:dict):
     producer = producers.get(topic)
     if not producer:
@@ -69,13 +91,25 @@ def send_data(topic: str, json_message:dict):
 
     print(f"Producer stopped for topic: {topic}")
 
+#@router.post("/authenticate")
+#ef api_authenticate(private_key_path: str, topic: str):
+#   if authenticate(private_key_path, topic):
+#        producers[topic] = Producer(KAFKA_CONFIG)
+#        return {"message": f"Authentication successful for topic {topic}"}
+#    else:
+#        raise HTTPException(status_code=403, detail="Authentication failed.")
+    
+
 @router.post("/authenticate")
-def api_authenticate(private_key_path: str, topic: str):
-    if authenticate(private_key_path, topic):
+def api_authenticate(private_key: UploadFile = File(...), topic: str = None):
+    key_bytes = private_key.file.read()  # Read uploaded key as bytes
+
+    if authenticate_keyfile(key_bytes, topic):  # Use the simplified helper
         producers[topic] = Producer(KAFKA_CONFIG)
         return {"message": f"Authentication successful for topic {topic}"}
     else:
         raise HTTPException(status_code=403, detail="Authentication failed.")
+
 
 @router.post("/start") # For Continuous Streaming
 def start_producer(topic: str, json_message: dict):
