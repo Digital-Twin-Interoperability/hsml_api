@@ -1,4 +1,4 @@
-import json, time, os, threading, keyboard
+import json, time, os, threading
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from confluent_kafka import Producer
 from cryptographic_tool import extract_did_from_private_key, extract_did_from_private_key_bytes
@@ -29,26 +29,7 @@ def delivery_report(err, msg):
         print(f'Error: {err}')
     else:
         print(f'Message delivered to {msg.topic()} [{msg.partition()}]')
-
-def authenticate(private_key_path: str, topic: str) -> bool:
-    print(f"Loading private key from: {private_key_path}")
-    producer_did = extract_did_from_private_key(private_key_path)
-
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT did FROM did_keys WHERE did = %s AND kafka_topic = %s", (producer_did, topic))
-    result = cursor.fetchone()
-    db.close()
-
-    if result:
-        print(f"Authentication successful: {producer_did} is authorized for topic {topic}.")
-        authenticated_users[topic] = producer_did
-        return True
-    else:
-        print(f"Authentication failed: {producer_did} is NOT authorized for topic {topic}.")
-        return False
-
-# Using this one:  
+ 
 def authenticate_keyfile(private_key_bytes: bytes, topic: str) -> bool:
     try:
         producer_did = extract_did_from_private_key_bytes(private_key_bytes)
@@ -84,20 +65,7 @@ def send_data(topic: str, json_message:dict):
         producer.flush()
         time.sleep(0.05)  # 50 ms delay for continuous sending
 
-        if keyboard.is_pressed('q'):
-            print(f"Stopping producer for topic: {topic}")
-            authenticated_users.pop(topic, None)  # Remove user authentication
-            break
-
     print(f"Producer stopped for topic: {topic}")
-
-#@router.post("/authenticate")
-#ef api_authenticate(private_key_path: str, topic: str):
-#   if authenticate(private_key_path, topic):
-#        producers[topic] = Producer(KAFKA_CONFIG)
-#        return {"message": f"Authentication successful for topic {topic}"}
-#    else:
-#        raise HTTPException(status_code=403, detail="Authentication failed.")
     
 
 @router.post("/authenticate")

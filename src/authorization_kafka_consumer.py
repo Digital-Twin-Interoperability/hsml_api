@@ -1,4 +1,4 @@
-import json, time, os, threading, keyboard
+import json, time, os, threading
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from confluent_kafka import Consumer, KafkaException
 from cryptographic_tool import extract_did_from_private_key, extract_did_from_private_key_bytes
@@ -36,31 +36,7 @@ def delivery_report(err, msg):
     else:
         print(f'Message delivered to {msg.topic()} [{msg.partition()}]')
 
-def authorize(private_key_path: str, topic: str) -> bool:
-    """Authorize the consumer before subscribing to a Kafka topic."""
-    print(f"Loading private key from: {private_key_path}")
-    consumer_did = extract_did_from_private_key(private_key_path)
 
-    db = mysql.connector.connect(**db_config)
-    cursor = db.cursor(dictionary=True)
-    cursor.execute("SELECT allowed_did FROM did_keys WHERE kafka_topic = %s", (topic,))
-    result = cursor.fetchone()
-    db.close()
-
-    if result and result["allowed_did"]:
-        allowed_dids = result["allowed_did"].split(",")
-        if consumer_did in allowed_dids:
-            print(f"Authentication successful. {consumer_did} is authorized for topic {topic}.")
-            authorized_users[topic] = consumer_did
-            return True
-        else:
-            print(f"Authentication failed. {consumer_did} is NOT authorized for topic {topic}.")
-            return False
-    else:
-        print(f"Authentication failed. No allowed consumers for {topic}.")
-        return False
-
-# Use this one:
 def authorize_keyfile(private_key_bytes: bytes, topic: str) -> bool:
     """Authorize the consumer before subscribing to a Kafka topic."""
     try:
@@ -107,27 +83,12 @@ def receive_messages(topic:str):
                 raise KafkaException(msg.error())
 
             print(f"Received message on '{topic}': {msg.value().decode('utf-8')}")
-            
-            if keyboard.is_pressed("esc"):
-                print("Stopping consumer.")
-                break
 
     except Exception as e:
         print(f"Error in consumer: {str(e)}")
     finally:
         consumer.close()
         print(f"Consumer for topic {topic} stopped.")
-
-#@router.post("/authorize")
-#def api_authorize(private_key_path: str, topic: str):
-#    """Authorize a consumer and start listening to messages."""
-#    if authorize(private_key_path, topic):
-#        consumer = Consumer(KAFKA_CONFIG)
-#        consumer.subscribe([topic])
-#        consumers[topic] = consumer
-#        return {"message": f"Authorization successful for topic {topic}"}
-#    else:
-#        raise HTTPException(status_code=403, detail="Authorization failed.")
 
 @router.post("/authorize")
 def api_authorize(private_key: UploadFile = File(...), topic: str = None):
