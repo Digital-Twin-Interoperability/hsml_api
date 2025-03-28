@@ -25,7 +25,6 @@ except Exception as e:
     exit(1)
 
 # Step 1: Authenticate - Make a POST request
-#auth_response = requests.post(f"{API_URL}/authenticate", params={"private_key_path": private_key_path, "topic": topic})
 auth_response = requests.post(f"{API_URL}/authenticate", params={"topic": topic}, files={"private_key": private_key_file})
 # Print the response
 print(auth_response.json()) # Should print success or failure

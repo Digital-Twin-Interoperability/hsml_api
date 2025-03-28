@@ -1,5 +1,6 @@
 import json, time, os, threading
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from confluent_kafka import Consumer, KafkaException
 from cryptographic_tool import extract_did_from_private_key, extract_did_from_private_key_bytes
 import mysql.connector
@@ -82,8 +83,12 @@ def receive_messages(topic:str):
             if msg.error():
                 raise KafkaException(msg.error())
 
-            print(f"Received message on '{topic}': {msg.value().decode('utf-8')}")
+            decoded_msg = msg.value().decode('utf-8')
+            print(f"Received message on '{topic}': {decoded_msg}")
 
+            # Write to file
+            with open(f"/tmp/hsml_latest_{topic}.json", "w") as f:
+                json.dump(json.loads(decoded_msg), f, indent=2)
     except Exception as e:
         print(f"Error in consumer: {str(e)}")
     finally:
@@ -115,6 +120,17 @@ def start_consumer(topic: str):
     thread.start()
 
     return {"message": f"Consumer started for topic {topic}"}
+
+@router.get("/latest-message")
+def get_latest_message(topic: str):
+    """Returns the last received HSML message written to /tmp/hsml_latest_{topic}.json"""
+    file_path = f"/tmp/hsml_latest_{topic}.json"
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="No message available yet.")
+    
+    with open(file_path, "r") as f:
+        data = json.load(f)
+    return JSONResponse(content=data)
 
 @router.post("/stop")
 def stop_consumer(topic: str):
