@@ -1,0 +1,15 @@
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.AssemblyInfoInputs.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.AssemblyInfo.cs
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.csproj.CoreCompileInputs.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.sourcelink.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\bin\Debug\net8.0\TempAuthoTest.exe
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\bin\Debug\net8.0\TempAuthoTest.deps.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\bin\Debug\net8.0\TempAuthoTest.runtimeconfig.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\bin\Debug\net8.0\TempAuthoTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\bin\Debug\net8.0\TempAuthoTest.pdb
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\refint\TempAuthoTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.pdb
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\TempAuthoTest.genruntimeconfig.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthoTest\obj\Debug\net8.0\ref\TempAuthoTest.dll

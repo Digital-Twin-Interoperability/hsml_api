@@ -1,0 +1,15 @@
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\bin\Debug\net8.0\TempAuthTest.exe
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\bin\Debug\net8.0\TempAuthTest.deps.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\bin\Debug\net8.0\TempAuthTest.runtimeconfig.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\bin\Debug\net8.0\TempAuthTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\bin\Debug\net8.0\TempAuthTest.pdb
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.AssemblyInfoInputs.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.AssemblyInfo.cs
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.csproj.CoreCompileInputs.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.sourcelink.json
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\refint\TempAuthTest.dll
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.pdb
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\TempAuthTest.genruntimeconfig.cache
+C:\Users\abarrio\OneDrive - JPL\Desktop\github_repos\hsml_api\tests\TempAuthTest\obj\Debug\net8.0\ref\TempAuthTest.dll
