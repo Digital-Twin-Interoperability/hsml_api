@@ -298,7 +298,7 @@ async def register_entity_endpoint(payload: dict):
         flagUniqueName = False
         while flagUniqueName == False:
             random_suffix = generate_random_string() # new
-            topic_name = f"{data["name"].replace(" ", "_").lower()}_{random_suffix}" # new
+            topic_name = f'{data["name"].replace(" ", "_").lower()}_{random_suffix}' # new
             #topic_name = data["name"].replace(" ", "_").lower()
             # Check the name generated does not already exist
             db = connect_db()
