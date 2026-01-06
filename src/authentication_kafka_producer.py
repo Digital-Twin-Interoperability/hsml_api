@@ -4,19 +4,48 @@ from confluent_kafka import Producer
 from cryptographic_tool import extract_did_from_private_key, extract_did_from_private_key_bytes
 import mysql.connector
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import Optional, List, Any
 
 load_dotenv()  # This will load the .env file from the current directory
 
+# Testing only
+TEST_MODE_TOPICS = {"test-topic"}
 # Configuration for Kafka broker
-KAFKA_CONFIG = {'bootstrap.servers': 'localhost:9092'}
+KAFKA_CONFIG = {'bootstrap.servers': '172.26.30.154:9092'}
 
 # MySQL Database Configuration
 db_config = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),  # Ensure this is set in environment
+    "host": os.getenv("DB_HOST", "172.26.30.154"),
+    "port": os.getenv("DB_PORT", "3306"),
+    "user": os.getenv("DB_USER", "did_app"),
+    "password": os.getenv("DB_PASSWORD", "csun2014"),  # Ensure this is set in environment
     "database": os.getenv("DB_NAME", "did_registry")
 }
+
+# Models for Physics
+class Inertia(BaseModel):
+    # "diagonal" or "full_matrix" from Omniverse
+    type: Optional[str] = None
+    # Allow either a flat list [ix,iy,iz] or nested 3x3
+    values: Optional[Any] = None
+
+class MessageWithPhysics(BaseModel):
+    # Match what Omniverse Cadre script currently writes:
+    # position: [x, y, z]
+    # rotation: [w, x, y, z]
+    position: Optional[List[float]] = None
+    rotation: Optional[List[float]] = None
+    mass: Optional[float] = None
+    inertia: Optional[Inertia] = None
+    center_of_mass: Optional[List[float]] = None
+    hosting: Optional[bool] = None
+    modifiedDate: Optional[str] = None
+
+    # IMPORTANT: let Unity’s existing HSML fields pass through unchanged
+    class Config:
+        extra = "allow"
+
 
 router = APIRouter()
 
@@ -29,7 +58,7 @@ def delivery_report(err, msg):
         print(f'Error: {err}')
     else:
         print(f'Message delivered to {msg.topic()} [{msg.partition()}]')
- 
+        
 def authenticate_keyfile(private_key_bytes: bytes, topic: str) -> bool:
     try:
         producer_did = extract_did_from_private_key_bytes(private_key_bytes)
@@ -103,12 +132,14 @@ def stop_producer(topic: str):
     
 @router.post("/send-message") # For Manual Messages - for more control of what is sent and when
 def send_message(topic: str, message: dict):
-    """Sends a user-provided JSON message to Kafka after authentication."""
-    if topic not in authenticated_users:
+    """
+    Sends a user-provided JSON message to Kafka.
+    For topics in TEST_MODE_TOPICS, authentication is bypassed (dev only).
+    """
+    if topic not in authenticated_users and topic not in TEST_MODE_TOPICS:
         raise HTTPException(status_code=401, detail="User not authenticated for this topic.")
 
     producer = Producer(KAFKA_CONFIG)
     producer.produce(topic, json.dumps(message).encode('utf-8'), callback=delivery_report)
     producer.flush()
     return {"message": "Message sent successfully"}
-

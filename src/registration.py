@@ -12,14 +12,15 @@ router = APIRouter()
 
 # Securely load database configuration from environment or config (avoid hard-coding passwords)
 db_config = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),  # Ensure this is set in environment
+    "host": os.getenv("DB_HOST", "172.26.30.154"),
+    "user": os.getenv("DB_USER", "did_app"),
+    "port": os.getenv("DB_PORT", "3306"),
+    "password": os.getenv("DB_PASSWORD", "csun2014"),  # Ensure this is set in environment
     "database": os.getenv("DB_NAME", "did_registry")
 }
 
 # Initialize Kafka client (adjust bootstrap server via env if needed)
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "172.26.30.154:9092")
 try:
     admin_client = AdminClient({"bootstrap.servers": KAFKA_BOOTSTRAP})
     producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
@@ -72,7 +73,7 @@ def send_kafka_message(topic: str, message: dict):
 def generate_did_key():
     """Generate a unique DID:key and return (did, private_key_pem)."""
     while True:
-        result = subprocess.run(["python", "cryptographic_tool.py", "--export-private"], capture_output=True, text=True)
+        result = subprocess.run(["python", "/app/src/cryptographic_tool.py", "--export-private"], capture_output=True, text=True)
         if result.returncode != 0:
             raise RuntimeError("Cryptographic tool did not execute properly.")
         output_lines = result.stdout.splitlines()

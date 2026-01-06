@@ -10,7 +10,7 @@ load_dotenv()  # This will load the .env file from the current directory
 
 # Configuration for Kafka broker
 KAFKA_CONFIG = {
-    'bootstrap.servers': 'localhost:9092',
+    'bootstrap.servers': '172.26.30.154:9092',
     'group.id': 'consumer_group',
     'auto.offset.reset': 'earliest',  # Start reading from the earliest message (modify to latest)
     'enable.auto.commit': False,  # Don't commit offsets automatically
@@ -18,9 +18,10 @@ KAFKA_CONFIG = {
 
 # MySQL Database Configuration
 db_config = {
-    "host": os.getenv("DB_HOST", "localhost"),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),  # Ensure this is set in environment
+    "host": os.getenv("DB_HOST", "172.26.30.154"),
+    "user": os.getenv("DB_USER", "did_app"),
+    "port": os.getenv("DB_PORT", "3306"),
+    "password": os.getenv("DB_PASSWORD", "csun2014"),  # Ensure this is set in environment
     "database": os.getenv("DB_NAME", "did_registry")
 }
 
@@ -39,7 +40,6 @@ def delivery_report(err, msg):
 
 
 def authorize_keyfile(private_key_bytes: bytes, topic: str) -> bool:
-    """Authorize the consumer before subscribing to a Kafka topic."""
     try:
         consumer_did = extract_did_from_private_key_bytes(private_key_bytes)
     except Exception as e:
@@ -65,7 +65,7 @@ def authorize_keyfile(private_key_bytes: bytes, topic: str) -> bool:
 
     return False
 
-    
+
 def receive_messages(topic:str):
     """Continuously poll messages from Kafka for the given topic."""
     consumer = consumers.get(topic)

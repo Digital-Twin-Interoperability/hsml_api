@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 import uvicorn
-from registration import router as registration_router # Import the router from registration_api
+from src.registration import router as registration_router # Import the router from registration_api
 from authentication_kafka_producer import router as producer_router # Import the router from authentication_kafka_producer
 from authorization_kafka_consumer import router as consumer_router # Import the router from authorization_kafka_producer
 
